@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
 import utils.metrics
-import numpy as np 
-
+import numpy as np  
+import sklearn.metrics as skm
 
 @torch.no_grad()
 def validation(loader, net, args):
@@ -60,3 +60,67 @@ def validation(loader, net, args):
     }
 
     return res
+
+@torch.no_grad()
+def validation_ood(loader, ood_loader, net, args):
+    net.eval()
+    
+    val_log = {'softmax': [], 'logit': []}
+
+    # In-distribution data
+    for batch_idx, (inputs, _) in enumerate(loader):
+        inputs = inputs.cuda()
+        if args.attn_type == "softmax":
+            output = net(inputs)
+        elif args.attn_type == "kep_svgp":
+            results = [net(inputs)[0] for _ in range(10)]
+            output = torch.mean(torch.stack(results), dim=0)
+        
+        softmax = F.softmax(output, dim=1)
+        pred_prob = softmax.max(1)[0]  # Get probabilities of the predicted class
+        val_log['softmax'].append(pred_prob.cpu().numpy())
+        # val_log['in_softmax'].append(pred_prob.cpu().numpy())
+        val_log['logit'].append(output.cpu().numpy())
+
+    # Out-of-distribution data
+    for batch_idx, (inputs, _) in enumerate(ood_loader):
+        inputs = inputs.cuda()
+        if args.attn_type == "softmax":
+            output = net(inputs)
+        elif args.attn_type == "kep_svgp":
+            results = [net(inputs)[0] for _ in range(10)]
+            output = torch.mean(torch.stack(results), dim=0)
+        
+        softmax = F.softmax(output, dim=1)
+        pred_prob = softmax.max(1)[0]  # Get probabilities of the predicted class
+        val_log['softmax'].append(pred_prob.cpu().numpy())
+        # val_log['out_softmax'].append(pred_prob.cpu().numpy())
+        val_log['logit'].append(output.cpu().numpy())
+
+    # Concatenate all predictions
+    for key in val_log:
+        val_log[key] = np.concatenate(val_log[key])
+
+    # Binary target: 1 for in-distribution, 0 for out-of-distribution
+    val_log['target'] = np.array([1] * len(loader.dataset) + [0] * len(ood_loader.dataset))
+
+    # Ensure `softmax` aligns with `target`
+    assert len(val_log['softmax']) == len(val_log['target']), \
+        f"Inconsistent lengths: {len(val_log['softmax'])} vs {len(val_log['target'])}"
+
+    # AUROC and AUPR calculation
+    auroc = skm.roc_auc_score(val_log['target'], val_log['softmax'])
+    aupr = skm.average_precision_score(val_log['target'], val_log['softmax'])
+    fpr, tpr, thresholds = skm.roc_curve(val_log['target'], val_log['softmax'])
+    fpr95 = fpr[np.where(tpr >= 0.95)[0][0]]
+    print(np.where(tpr >= 0.95))
+
+    res = {
+        'AUROC': auroc,
+        'AUPR': aupr,
+        'FPR95': fpr95
+    }
+    return res
+
+    
+    

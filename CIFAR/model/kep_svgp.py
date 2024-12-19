@@ -54,43 +54,42 @@ class KEP_SVGPAttention(nn.Module):
     def forward(self, x):
         B, N, C = x.shape
         qk = self.qk(x).reshape(B, N, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k = qk.unbind(0)
+        q, k = qk.unbind(0) # (batch_size, num_heads, seq_len, head_dim)
 
         we, wr = self.gen_weights(x)
         q = self.feature_map(q) 
         k = self.feature_map(k) 
-        escore = torch.einsum('...nd,...de->...ne', q, we)
-        rscore = torch.einsum('...nd,...de->...ne', k, wr)
+        escore = torch.einsum('...nd,...de->...ne', q, we) # (batch_size, num_heads, seq_len, low_rank)
+        rscore = torch.einsum('...nd,...de->...ne', k, wr) # (batch_size, num_heads, seq_len, low_rank)
         if self.concate:
-            score = torch.cat((escore, rscore), dim=2)
+            score = torch.cat((escore, rscore), dim=2) # (batch_size, num_heads, 2 * seq_len, low_rank)
 
         ## compute mean and covariance for the SGP
         # mean
-        lambda_sqrt_inv_diag = torch.diag_embed(torch.exp(self.log_lambda_sqrt_inv_diag))
+        lambda_sqrt_inv_diag = torch.diag_embed(torch.exp(self.log_lambda_sqrt_inv_diag)) # (num_heads, low_rank, low_rank)
         if self.concate:
-            v1 = score @ (lambda_sqrt_inv_diag.unsqueeze(0) ** 2)
+            v1 = score @ (lambda_sqrt_inv_diag.unsqueeze(0) ** 2) # (batch_size, num_heads, 2 * seq_len, low_rank), E_X\times\Lambda^{-1}, R_X\times\Lambda^{-1}
         else:
-            v1 = (escore + rscore) @ (lambda_sqrt_inv_diag.unsqueeze(0) ** 2)
-        mean = v1 @ self.m_u
+            v1 = (escore + rscore) @ (lambda_sqrt_inv_diag.unsqueeze(0) ** 2) # (batch_size, num_heads, seq_len, low_rank)
+        mean = v1 @ self.m_u # (batch_size, num_heads, seq_len, low_rank)
         # covariance 
-        s_sqrt = torch.exp(self.log_ssqrt) 
-        s_sqrt_diag = torch.diag_embed(s_sqrt) 
-        s_sqrt_local = s_sqrt_diag + torch.tril(self.s_sqrt_low_triangle, diagonal=-1) 
-
+        s_sqrt = torch.exp(self.log_ssqrt) # (1, num_heads, low_rank, low_rank)
+        s_sqrt_diag = torch.diag_embed(s_sqrt) # (1, num_heads, low_rank, low_rank, low_rank)
+        s_sqrt_local = s_sqrt_diag + torch.tril(self.s_sqrt_low_triangle, diagonal=-1) # (1, num_heads, low_rank, low_rank, low_rank) 
         # choleskey factor of the covariance matrix
         # the last dimension should be the [d] dimension
-        v2 = v1.unsqueeze(2) @ s_sqrt_local.permute(0,1,4,2,3) 
-        
+        v2 = v1.unsqueeze(2) @ s_sqrt_local # (batch_size, num_heads, low_rank, 2*seq_len / seq_len, low_rank([d] dimension))
+
         ## samples from the approximate posterior
         if self.concate:
-            samples = mean + (v2.permute(0,1,3,2,4) @ torch.randn(B, self.num_heads, 2*N, mean.shape[3], 1).to(x.device)).squeeze()
+            samples = mean + (v2 @ torch.randn(B, self.num_heads, self.low_rank, self.low_rank, 1).to(x.device)).squeeze().permute(0, 1, 3, 2)
         else:
             samples = mean + (v2.permute(0,1,3,2,4) @ torch.randn(B, self.num_heads, N, mean.shape[3], 1).to(x.device)).squeeze()
         attn_out = self.final_weight(samples)
         if self.concate:
             attn_out = self.embed_len_weight(attn_out.permute(0,1,3,2)).permute(0,1,3,2)
         attn_out = attn_out.transpose(1, 2).reshape(B, N, C)
-        # attn_out = self.proj(attn_out)
+        attn_out = self.proj(attn_out)
         attn_out = self.proj_drop(attn_out)
 
         ## compute the KL divergence 
@@ -116,3 +115,4 @@ if __name__ == '__main__':
     inputs = torch.cuda.FloatTensor(100, 64, 128)
     with torch.no_grad():
         samples = net(inputs)
+        print(samples)

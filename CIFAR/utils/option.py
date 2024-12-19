@@ -9,9 +9,11 @@ def get_args_parser():
     parser.add_argument('--nb-epochs', default=200, type=int, help='Total number of training epochs')
     parser.add_argument('--batch-size', default=128, type=int, help='Batch size')
     parser.add_argument('--nb-worker', default=4, type=int, help='Nb of workers')
+    parser.add_argument('--seed', default=0, type=int, help='Set seed for reproducibility')
+    parser.add_argument('--wandb-key', default=None, type=str, help='Set wandb key for tracking progresses')
     
     ## Model
-    parser.add_argument('--model', default='vit_cifar', type=str, choices = ['vit_cifar'], help='Models name to use')
+    parser.add_argument('--model', default='vit_cifar', type=str, choices = ['vit_cifar', 'diffusion'], help='Models name to use')
     parser.add_argument('--depth', type=int, default=7)
     parser.add_argument('--hdim', type=int, default=384)
     parser.add_argument('--num_heads', type=int, default=12)

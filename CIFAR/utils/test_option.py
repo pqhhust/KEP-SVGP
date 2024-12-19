@@ -10,7 +10,11 @@ def get_args_parser():
     parser.add_argument('--gpu', default='0', type=str, help='GPU id to use')
     parser.add_argument('--save-dir', default='./output', type=str, help='Output directory')
     parser.add_argument('--method-name', default='baseline', type=str, choices = ['baseline', 'kep_svgp'], help='Type of methods')
-    parser.add_argument('--ood-data', default='Textures', type=str, choices = ['cifar10','cifar100','Textures', 'SVHN', 'Places365', 'LSUN-C', 'LSUN-R', 'iSUN'], help='OOD dataset name')
+    parser.add_argument('--ood-data', default=None, type=str, choices = ['cifar10','cifar100','Textures', 'SVHN', 'Places365', 'LSUN-C', 'LSUN-R', 'iSUN'], help='OOD dataset name')
+    parser.add_argument('--seed', default=0, type=int, help='Set seed for reproducibility')
+    parser.add_argument("--ood-train-dir", type=str, default=None, help='ood train directory')
+    parser.add_argument("--ood-val-dir", type=str, default=None, help='ood val directory')
+    parser.add_argument("--ood-test-dir", type=str, default=None, help='ood test directory')
     
     # KEP-SVGP-attention
     parser.add_argument('--ksvd-layers', type=int, default=1, help='Number of ksvd layers applied to the transformer')
@@ -22,10 +26,11 @@ def get_args_parser():
     parser.add_argument('--rank_multi', type=int, default=10, help='low rank dimension * rank_multi')
 
     ## Model
-    parser.add_argument('--model', default='vit_cifar', type=str, choices = ['vit_cifar'], help='Models name to use')
+    parser.add_argument('--model', default='vit_cifar', type=str, choices = ['vit_cifar', 'diffusion'], help='Models name to use')
     parser.add_argument('--depth', type=int, default=7)
     parser.add_argument('--hdim', type=int, default=384)
     parser.add_argument('--num_heads', type=int, default=12)
+    parser.add_argument('--epsilon', type=float, default = 1)
 
     subparsers = parser.add_subparsers(title="dataset setting", dest="subcommand")
     Cifar10 = subparsers.add_parser("Cifar10",
