@@ -6,3 +6,5 @@ setuptools==59.5.0
 six
 scikit-learn
 pandas
+wandb
+timm
